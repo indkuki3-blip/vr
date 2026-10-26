@@ -2,6 +2,7 @@ name: Build APK
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,9 +12,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -29,7 +30,21 @@ jobs:
 
       - name: Build APK
         working-directory: vrpass
-        run: gradle assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --stacktrace 2>&1 | tee build.log
+
+      - name: Save log on failure
+        if: failure()
+        run: |
+          grep -E "^e: |What went wrong|error:|Could not|^> " vrpass/build.log | head -40 | while read -r line; do echo "::error::$line"; done
+          mkdir /tmp/logrepo
+          cp vrpass/build.log /tmp/logrepo/build.log
+          cd /tmp/logrepo
+          git init -q
+          git add build.log
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "build log"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:build-logs
 
       - name: Rename APK
         run: cp vrpass/app/build/outputs/apk/debug/app-debug.apk VR-Kozildirik.apk
